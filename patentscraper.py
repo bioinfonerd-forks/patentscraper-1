@@ -9,17 +9,20 @@ import urllib2
 from bs4 import BeautifulSoup
 
 class PatentScraper(object):
+	### variables for and regular expression patterns for processing data
 	def __init__(self):
 		self.month_dict = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6, "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12, "January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12}
 		self.date_pattern = re.compile(r'[a-zA-Z]+\s\d{1,2}\D{1}\s\d{4}')
 		self.reissue_pattern = re.compile(r'[R]{1}[E]{1}[0-9,]')
 		self.number_pattern = re.compile(r'[0-9,]')
 	
+	### generate the url to be opened after being given the patent number
 	def generateUrl(self, patentNumber):
 		return "http://patft.uspto.gov/netacgi/nph-Parser?Sect1=PTO2&Sect2=HITOFF&p=1&u=%2Fnetahtml%2FPTO%2Fsearch-bool.html&r=1&f=G&l=50&co1=AND&d=PTXT&s1={0}.PN.&OS=PN/{0}&RS=PN/{0}".format(patentNumber)
 
+	### open url and return the object containing the data from the url
+	### return false if there is an error
 	def openUrl(self, url):
-
 		try:
 			response = urllib2.urlopen(url)
 			return response
@@ -27,21 +30,22 @@ class PatentScraper(object):
 			print e
 			return False
 	
+	
 	def setPage(self, patentNumber):
-		
+		## given a patent number, set the class object that holds the data for the given URL
 		url = self.generateUrl(patentNumber)
-
 		self.response = self.openUrl(url)
-
 		if self.response == False:
 			print "Failed opening."
 			exit()
-
+		
+		## if successful, then start scraping data for relevant information
 		self.processPage()
 		self.searchReferencesLink()
 
 	
 	def processPage(self):
+		## format url data into form more amenable for processing
 		self.response = self.response.read()
 		self.response = self.response.encode('ascii', 'ignore').decode('ascii')
 		self.soup = BeautifulSoup(self.response)
@@ -51,6 +55,7 @@ class PatentScraper(object):
 
 
 	def returnAssignee(self):
+		# iterate through page to find the assignee of the page
 		result_list = []
 		for row in self.row_list:
 				for string in row.stripped_strings:
@@ -61,18 +66,19 @@ class PatentScraper(object):
 		return result_list
 
 	def returnDate(self):
+		
 		year_check = 0
 		month_check = 0
 		issued_date = ""
 	
-
+		## iterate through rows in the page to find relevant string
 		for row in self.row_list:
 
 			for string in row.stripped_strings:
 				string = string.lstrip()
 				string = string.rstrip()
 				length = len(string)
-
+				## if string contains a date pattern, make sure it is the correct, most recent, issue date
 				if re.match(self.date_pattern, string) != None:
 
 					year_check_list = string.split(',')
@@ -97,7 +103,7 @@ class PatentScraper(object):
 		return issued_date
 
 	def searchReferencesLink(self):
-
+		## search for the references link
 		references_link = []
 
 		for center in self.center_list:
@@ -106,11 +112,13 @@ class PatentScraper(object):
 					if re.match("References Cited", string):
 						for a in bold.findAll('a',href=True):
 							references_link.append(a['href'])
+		## if references are found then pass the link to the function that opens reference URL
 		if len(references_link) == 1:
 			self.setReferencesFile(references_link[0])
 		return 
 	
 	def setReferencesFile(self, referenceLink):
+		#sets the object containing the data for the reference patents
 		referenceUrl = "http://patft.uspto.gov{0}".format(referenceLink)
 		self.reference_file = self.openUrl(referenceUrl)
 		self.reference_file = self.reference_file.read()
@@ -120,16 +128,17 @@ class PatentScraper(object):
 
 
 	def returnReferenceIDs(self):
-
-
+		# retrieves the IDS from the reference file
 		ids_list = []
 		next_link = ""
 		no_next_page_avaliable = True
 
+		
 		while no_next_page_avaliable == True:
 
 			self.reference_table = self.reference_file.find_all('td')
-
+			## iterates through all possible patents numbers
+			## appends to ids_list if relevant id is found
 			for data in self.reference_table:
 				for a in data.find_all('a'):
 		
@@ -166,7 +175,9 @@ if __name__ == "__main__":
 	except:
 		print "No file found with that name"
 		exit()
-
+	
+	## each line represents a patent number to be processed
+	
 	for line in inputFile:
 		line = line.strip('\n')
 		outputFile = open(line, 'w')
@@ -175,7 +186,8 @@ if __name__ == "__main__":
 		outputFile.write("Primary Patent #: ")
 		outputFile.write(line)
 		outputFile.write("\n")
-
+		
+		# functions retrieve relevant issue data
 		if re.match(r'[R]{1}[E]{1}[0-9,]', line):
 			outputfile.write("Patent is a reissue." + "\n")
 		outputFile.write("Primary Patent Issue date: ")
@@ -188,7 +200,8 @@ if __name__ == "__main__":
 		for element in list_of_assignees:
 			outputFile.write(element)
 			outputFile.write("\n")
-
+		
+		## return reference ids and retrieve the data for those reference IDS
 		outputFile.write("Number of References: ")
 		list_of_references = patentObject.returnReferenceIDs()
 		outputFile.write(str(len(list_of_references)))
